@@ -75,7 +75,7 @@ qemu-img create -f qcow2 linux-pci-dev.qcow2 20G
 ```
 
 ### Customize the PCI device
-Add the file containing the device at this location
+Add the file containing the device to this location
 ```bash
 cd ~/qemu-pci-dev/qemu/hw/misc
 ```
@@ -100,4 +100,55 @@ make -j$(nproc)
 ```bash
 chmod +x launch-vm.sh
 ./launch-vm.sh
+```
+
+## 3. Create PCI Device Driver
+
+**Installation of required packages in VM**
+```bash
+sudo apt update
+sudo apt install \
+  build-essential \
+  linux-headers-$(uname -r) \
+  gdb \
+  make \
+  git
+```
+
+**Mount the fileshare**
+To share files between Host(files/) and the VM(filexhost)
+```bash
+mkdir filexhost
+cd filexhost
+sudo mount -t 9p -o trans=virtio,version=9p2000.L hostshare ~/filexhost
+```
+
+**Check if PCI device can be found**
+```bash
+lspci -nn
+```
+
+### Make & Load the Kernel Module
+
+Currently, the driver displays a modest template.
+It probes and maps one BAR.
+
+drv_pci must be in the same directory as the Makefile when calling
+```bash
+make
+```
+
+Load the LKM with
+```bash
+sudo insmod drv_pci.ko
+```
+
+Inspect the kernel messages with
+```bash
+sudo dmesg | tail
+```
+
+Remove the kernel module
+```bash
+sudo rmmod drv_pci
 ```
