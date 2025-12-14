@@ -21,8 +21,9 @@
 *.a
 *.la
 *.lo
+*.ln
 
-# Shared objects (inc. Windows DLLs)
+# Shared objects
 *.dll
 *.so
 *.so.*
@@ -42,6 +43,18 @@
 *.idb
 *.pdb
 
+# Disk images
+*.qcow2
+*.img
+*.vdi
+*.vmdk
+
+#Iso images
+*.iso
+
+# Build directories
+/build/
+
 # Kernel Module Compile Results
 *.mod*
 *.cmd
@@ -50,6 +63,10 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Log and debugging files
+*.log
+qemu-log-*
 
 # debug information files
 *.dwo
