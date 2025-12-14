@@ -2,6 +2,8 @@
 
 This project demonstrates how to emulate a custom PCI device using QEMU and includes a corresponding Linux kernel driver to interact with the virtual hardware. Notice: My Host OS is Ubuntu 20.04.
 
+**Workflow:  Setup QEMU  ->  Add custom PCI Device  ->  Build QEMU  ->  Start QEMU  ->  Add, Make & Load Driver**
+
 ## Table of Contents
 1. [Prerequisites](#1-prerequisites)
 2. [Create Custom PCI Device in QEMU](#2-create-custom-pci-device-in-qemu)
@@ -15,8 +17,7 @@ This project demonstrates how to emulate a custom PCI device using QEMU and incl
 * QEMU: v9.0.0
 * Linux Kernel: Version 5.4
 
-### Installation
-Install the dependencies using your package manager:
+### Install the dependencies
 
 ```bash
 # Debian/Ubuntu systems
@@ -46,22 +47,26 @@ qemu-pci-dev/
 ├── images/      # VM-Disks
 ├── isos/        # Linux-ISOs
 ├── build/       # QEMU-Builds / Device-Code
-└── logs/
+├── logs/        # I do not use logs
+└── launchVM.sh  # launch script
 ```
 ```bash
 mkdir -p ~/qemu-pci-dev/{images,isos,build,logs,filex}
 cd ~/qemu-pci-dev
 ```
+
 **Clone the QEMU github**
 ```bash
 git clone https://gitlab.com/qemu-project/qemu.git
 cd qemu
 git checkout v9.0.0
 ```
+
 **Copy your ISO to /isos**
 ```bash
 cp ~/path/to/iso/ubuntu-24.04.3-desktop-amd64.iso ~/qemu-pci-dev/isos/ubuntu-24.04.3-desktop-amd64.iso
 ```
+
 **Create your image in /images**
 ```bash
 cd ~/qemu-pci-dev/images
@@ -70,4 +75,29 @@ qemu-img create -f qcow2 linux-pci-dev.qcow2 20G
 ```
 
 ### Customize the PCI device
+Add the file containing the device at this location
+```bash
+cd ~/qemu-pci-dev/qemu/hw/misc
+```
+Manipulate the meson.build file in this directory 
+```bash
+vim meson.build
+```
+by adding this line
+```python3
+system_ss.add(when: 'CONFIG_PCI', if_true: files('custom-pci-device.c'))
+```
 
+### Build QEMU
+this might take a moment
+```bash
+cd ~/qemu-pci-dev/build
+../qemu/configure --target-list=x86_64-softmmu --enable-debug --enable-sdl --enable-gtk --enable-slirp 
+make -j$(nproc)
+```
+
+### Use a bash script to launch QEMU
+```bash
+chmod +x launch-vm.sh
+./launch-vm.sh
+```
