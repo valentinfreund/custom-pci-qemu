@@ -40,16 +40,19 @@ Download an Ubuntu iso. i.e. **ubuntu-24.04.3-desktop-amd64.iso**
 ## 2. Create Custom PCI Device in QEMU
 
 ### Set up project
-Our project structure should look like this. 
+Our project structure should look like this after the setup. 
 
 ```text
 qemu-pci-dev/
 ├── images/      # VM-Disks
 ├── isos/        # Linux-ISOs
-├── build/       # QEMU-Builds / Device-Code
+├── build/       # QEMU-Builds
 ├── logs/        # I do not use logs
+├── qemu/        # Cloning QEMU github will 
+|                # create this directory
 └── launchVM.sh  # launch script
 ```
+
 ```bash
 mkdir -p ~/qemu-pci-dev/{images,isos,build,logs,filex}
 cd ~/qemu-pci-dev
@@ -96,6 +99,8 @@ cd ~/qemu-pci-dev/build
 make -j$(nproc)
 ```
 
+**Notice:  before rebuilding delete everything in qemu-pci-dev/build/**
+
 ### Use a bash script to launch QEMU
 ```bash
 chmod +x launch-vm.sh
@@ -138,12 +143,12 @@ drv_pci must be in the same directory as the Makefile when calling
 make
 ```
 
-Load the LKM with
+Load the LKM
 ```bash
 sudo insmod drv_pci.ko
 ```
 
-Inspect the kernel messages with
+Inspect the kernel messages
 ```bash
 sudo dmesg | tail
 ```
