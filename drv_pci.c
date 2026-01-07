@@ -18,20 +18,20 @@ MODULE_LICENSE("GPL");
 //-------------------------------------------------
 
 
-//##############################
-// state container						##
-//##############################
+//############################
+// state container			##
+//############################
 struct mydev_state {
     struct pci_dev *pdev;
     void __iomem *bar0;
 };
 
 //##################################################
-// @name 			custompci_probe
-// @param			pci_dev and pci_device_id
+// @name 	    custompci_probe
+// @param		pci_dev and pci_device_id
 // @return		0 or error code
 // @function	gets called for each list entry,
-//						allocates and initializes
+//				allocates and initializes
 //-------------------------------------------------
 static int custompci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
@@ -78,11 +78,11 @@ err_disable:
 }
 
 //##################################################
-// @name 			custompci_remove
-// @param			pci_dev
+// @name 		custompci_remove
+// @param		pci_dev
 // @return		void
 // @function	gets called for each list entry when rmmod,
-//						deallocates and clean up
+//				deallocates and clean up
 //-------------------------------------------------
 static void custompci_remove(struct pci_dev *pdev)
 {
@@ -97,18 +97,18 @@ static void custompci_remove(struct pci_dev *pdev)
     pr_info(DRV_NAME ": device removed\n");
 }
 
-//##############################
-// pci device table						##
-//##############################
+//############################
+// pci device table			##
+//############################
 static const struct pci_device_id mypci_ids[] = {
     { PCI_DEVICE(VENDOR_ID, DEVICE_ID) },
     { 0 }
 };
 MODULE_DEVICE_TABLE(pci, mypci_ids);
 
-//##############################
-// function mapping						##
-//##############################
+//############################
+// function mapping			##
+//############################
 static struct pci_driver custompci_driver = {
     .name = DRV_NAME,
     .id_table = mypci_ids,
@@ -117,8 +117,8 @@ static struct pci_driver custompci_driver = {
 };
 
 //##################################################
-// @name 			custompci_init
-// @param			void
+// @name 		custompci_init
+// @param		void
 // @return		void
 // @function	gets called when module is added
 //-------------------------------------------------
@@ -129,8 +129,8 @@ static int __init custompci_init(void)
 }
 
 //##################################################
-// @name 			custompci_exit
-// @param			void
+// @name 		custompci_exit
+// @param		void
 // @return		void
 // @function	gets called when rmmod
 //-------------------------------------------------
