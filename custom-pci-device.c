@@ -15,9 +15,9 @@ OBJECT_DECLARE_SIMPLE_TYPE(PCIDeviceState, CUSTOM_PCI_DEVICE)
 #define BAR0_SIZE           4096
 
 
-//##############################
-// state container						##
-//##############################
+//############################
+// state container			##
+//############################
 typedef struct PCIDeviceState {
     PCIDevice parent_obj;
     
@@ -26,11 +26,11 @@ typedef struct PCIDeviceState {
 } MyPCIDeviceState;
 
 //##################################################
-// @name 			custom_pci_bar0_read
-// @param			device state, hwaddr, size
+// @name 		custom_pci_bar0_read
+// @param		device state, hwaddr, size
 // @return		0 or error code
 // @function	read function is called 
-//						if something is written into the bar
+//				if something is written into the bar
 //-------------------------------------------------
 static uint64_t custom_pci_bar0_read(void *opaque, hwaddr addr, unsigned size)
 {
@@ -46,11 +46,11 @@ static uint64_t custom_pci_bar0_read(void *opaque, hwaddr addr, unsigned size)
 }
 
 //##################################################
-// @name 			custom_pci_bar0_write
-// @param			device state, hwaddr, val, size
+// @name 		custom_pci_bar0_write
+// @param		device state, hwaddr, val, size
 // @return		void
 // @function	write function is called 
-//						if something needs to be written into the bar
+//				if something needs to be written into the bar
 //-------------------------------------------------
 static void custom_pci_bar0_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
 {
@@ -63,9 +63,9 @@ static void custom_pci_bar0_write(void *opaque, hwaddr addr, uint64_t val, unsig
 }
 
 
-//##############################
-// memory operations					##
-//##############################
+//############################
+// memory operations		##
+//############################
 static const MemoryRegionOps custom_pci_bar0_ops = {
     .read = custom_pci_bar0_read,
     .write = custom_pci_bar0_write,
@@ -77,8 +77,8 @@ static const MemoryRegionOps custom_pci_bar0_ops = {
 };
 
 //##################################################
-// @name 			custom_pci_device_realize
-// @param			device, error
+// @name 	    custom_pci_device_realize
+// @param		device, error
 // @return		void
 // @function	initializes the pci device state
 //-------------------------------------------------
@@ -94,8 +94,8 @@ static void custom_pci_device_realize(PCIDevice *pci_dev, Error **errp)
 
 
 //##################################################
-// @name 			custom_pci_device_exit
-// @param			device
+// @name 		custom_pci_device_exit
+// @param		pcidevice
 // @return		void
 // @function	gets called at shut down
 //-------------------------------------------------
@@ -104,8 +104,8 @@ static void custom_pci_device_exit(PCIDevice *pci_dev)
 
 
 //##################################################
-// @name 			custom_pci_device_class_init
-// @param			object class, data
+// @name 		custom_pci_device_class_init
+// @param		object class, data
 // @return		void
 // @function	gets called at start up
 //-------------------------------------------------
@@ -126,9 +126,9 @@ static void custom_pci_device_class_init(ObjectClass *oclass, void *data)
 }
 
 
-//##############################
-// type info									##
-//##############################
+//############################
+// type info				##
+//############################
 static const TypeInfo custom_pci_device_info = {
     .name          = TYPE_CUSTOM_PCI_DEVICE,
     .parent        = TYPE_PCI_DEVICE,
@@ -141,8 +141,8 @@ static const TypeInfo custom_pci_device_info = {
 };
 
 //##################################################
-// @name 			custom_pci_device_register_types
-// @param			void
+// @name 		custom_pci_device_register_types
+// @param		void
 // @return		void
 // @function	gets called at start up
 //-------------------------------------------------
