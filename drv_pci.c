@@ -131,7 +131,7 @@ static int custompci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 /* Setup misc device */
     st->miscdev.minor = MISC_DYNAMIC_MINOR;
     st->miscdev.name = DRV_NAME;
-    st->miscdev.fops = &mymiscpci_fops;
+    st->miscdev.fops = &miscpci_fops;
 
     ret = misc_register(&st->miscdev);
     if (ret)
