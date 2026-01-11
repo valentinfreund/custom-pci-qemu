@@ -88,8 +88,6 @@ static const struct file_operations miscpci_fops = {
     .write = miscpci_write,
 };
 
-
-
 //##################################################
 // @name 	    custompci_probe
 // @param		pci_dev and pci_device_id
