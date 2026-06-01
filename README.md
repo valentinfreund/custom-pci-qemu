@@ -152,7 +152,7 @@ Write to miscdev
 sudo sh -c 'echo "Hallo DMA" > /dev/drv_pci' tail
 ```
 
-Read from miscdev the contents from the dma transfer
+Read from miscdev the contents of the dma transfer
 ```bash
 sudo head -c 16 /dev/drv_pci | hexdump -C
 ```
