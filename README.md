@@ -147,6 +147,15 @@ Load the LKM
 ```bash
 sudo insmod drv_pci.ko
 ```
+Write to miscdev
+```bash
+sudo sh -c 'echo "Hallo DMA" > /dev/drv_pci' tail
+```
+
+Read from miscdev the contents from the dma transfer
+```bash
+sudo head -c 16 /dev/drv_pci | hexdump -C
+```
 
 Inspect the kernel messages
 ```bash
