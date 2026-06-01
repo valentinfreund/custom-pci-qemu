@@ -2,17 +2,29 @@
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
+#include "hw/pci/msi.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "qapi/error.h"
+#include "sysemu/dma.h"
 
 #define TYPE_CUSTOM_PCI_DEVICE "custom-pci-device"
 OBJECT_DECLARE_SIMPLE_TYPE(PCIDeviceState, CUSTOM_PCI_DEVICE)
 
-#define PCI_VENDOR_ID    0x1234
-#define PCI_DEVICE_ID    0x5678
-#define PCI_REVISION     0x01
-#define BAR0_SIZE           4096
+//pci device information
+#define CUSTOM_PCI_VENDOR_ID    0x1234
+#define CUSTOM_PCI_DEVICE_ID    0x5678
+#define CUSTOM_PCI_REVISION     0x01
+#define BAR0_SIZE           	4096
+//bar0 adress space
+#define REG_IRQ_TRIGGER 	0x00
+#define REG_DMA_ADDR_LOW 	0x04
+#define REG_DMA_ADDR_HIGH 	0x08
+#define REG_DMA_SIZE 		0x0C
+#define REG_DMA_CMD 		0x10
+//dma commands
+#define CMD_DMA_READ      0x01
+#define CMD_DMA_WRITE     0x02
 
 
 //############################
@@ -23,7 +35,41 @@ typedef struct PCIDeviceState {
     
     MemoryRegion bar0;
     uint8_t bar0_data[BAR0_SIZE];
+    
+    uint32_t dma_addr_low;
+    uint32_t dma_addr_high;
+    uint32_t dma_size;
 } MyPCIDeviceState;
+
+//##################################################
+// @name 		do_custom_dma
+// @param		device, command type
+// @function	called when using dma functionality
+//-------------------------------------------------
+static void do_custom_dma(MyPCIDeviceState *d, uint32_t cmd)
+{
+    PCIDevice *pci_dev = PCI_DEVICE(d);
+    dma_addr_t dma_addr = ((dma_addr_t)d->dma_addr_high << 32) | d->dma_addr_low;
+    
+    uint8_t local_buf[256]; 
+    uint32_t size = d->dma_size;
+    
+    if (size > sizeof(local_buf)) {
+        size = sizeof(local_buf); 
+    }
+    
+    if (cmd == CMD_DMA_READ) {
+        pci_dma_read(pci_dev, dma_addr, local_buf, size);
+        qemu_log_mask(LOG_UNIMP, "custom-pci-device: DMA read %d bytes from guest\n", size);
+        
+    } else if (cmd == CMD_DMA_WRITE) {
+        memset(local_buf, 0xAB, size); 
+        pci_dma_write(pci_dev, dma_addr, local_buf, size);
+        qemu_log_mask(LOG_UNIMP, "custom-pci-device: DMA write %d bytes to guest\n", size);
+    }
+    
+    msi_notify(pci_dev, 0);
+}
 
 //##################################################
 // @name 		custom_pci_bar0_read
@@ -55,10 +101,34 @@ static uint64_t custom_pci_bar0_read(void *opaque, hwaddr addr, unsigned size)
 static void custom_pci_bar0_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
 {
     MyPCIDeviceState *d = opaque;
+    PCIDevice *pci_dev = PCI_DEVICE(d);
     
     if (addr + size <= BAR0_SIZE) {
         memcpy(&d->bar0_data[addr], &val, size);
-        qemu_log_mask(LOG_GUEST_ERROR, "custom-pci-device: BAR0 write at 0x%lx, size %d, value 0x%lx\n", addr, size, val);
+        
+        switch (addr) {
+            case REG_IRQ_TRIGGER:
+                if (val == 1) {
+                    qemu_log_mask(LOG_UNIMP, "custom-pci-device: Triggering MSI Interrupt!\n");
+                    msi_notify(pci_dev, 0); 
+                }
+                break;
+            case REG_DMA_ADDR_LOW:
+            	d->dma_addr_low = (uint32_t)val;
+            	break;
+        	case REG_DMA_ADDR_HIGH:
+            	d->dma_addr_high = (uint32_t)val;
+            	break;
+        	case REG_DMA_SIZE:
+            	d->dma_size = (uint32_t)val;
+            	break;
+        	case REG_DMA_CMD:
+            	do_custom_dma(d, (uint32_t)val);
+            	break;
+            default:
+                qemu_log_mask(LOG_GUEST_ERROR, "custom-pci-device: BAR0 write at 0x%lx, value 0x%lx\n", addr, val);
+                break;
+        }
     }
 }
 
@@ -90,6 +160,12 @@ static void custom_pci_device_realize(PCIDevice *pci_dev, Error **errp)
     memory_region_init_io(&d->bar0, OBJECT(d), &custom_pci_bar0_ops, d, "custom-pci-bar0", BAR0_SIZE);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->bar0);
     memset(d->bar0_data, 0, BAR0_SIZE);
+    
+    /* Initialize MSI (device, config space offset, #vectors, 64bit, pro vector mask, error pointer)*/
+    int ret = msi_init(pci_dev, 0, 1, true, false, errp);
+    if (ret) {
+        qemu_log_mask(LOG_GUEST_ERROR, "custom-pci-device: Failed to init MSI\n");
+    }
 }
 
 
@@ -100,7 +176,9 @@ static void custom_pci_device_realize(PCIDevice *pci_dev, Error **errp)
 // @function	gets called at shut down
 //-------------------------------------------------
 static void custom_pci_device_exit(PCIDevice *pci_dev)
-{}
+{
+	msi_uninit(pci_dev);
+}
 
 
 //##################################################
@@ -116,9 +194,9 @@ static void custom_pci_device_class_init(ObjectClass *oclass, void *data)
     
     k->realize = custom_pci_device_realize;
     k->exit = custom_pci_device_exit;
-    k->vendor_id = PCI_VENDOR_ID;
-    k->device_id = PCI_DEVICE_ID;
-    k->revision = PCI_REVISION;
+    k->vendor_id = CUSTOM_PCI_VENDOR_ID;
+    k->device_id = CUSTOM_PCI_DEVICE_ID;
+    k->revision = CUSTOM_PCI_REVISION;
     k->class_id = PCI_CLASS_OTHERS;
     
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
