@@ -10,6 +10,6 @@ $QEMU_BUILD \
     -m 4G \
     -smp 4 \
     -drive file=$IMAGE,format=qcow2,if=virtio \
-    -device my-pci-device \
+    -device custom-pci-device \
     -display gtk \
     -virtfs local,path=./filex,mount_tag=hostshare,security_model=mapped,id=hostshare
