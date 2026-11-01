@@ -1,0 +1,6 @@
+# Custom QEMU devices (sourced from hw/Kconfig via qemu/patches).
+
+config CUSTOM_PCI_DEVICE
+    bool
+    default y if PCI_DEVICES
+    depends on PCI && MSI_NONBROKEN

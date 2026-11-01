@@ -1,0 +1,9 @@
+config BR2_PACKAGE_DRV_PCI
+	bool "drv-pci"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Linux driver for custom-pci-device (QEMU): BAR0 MMIO,
+	  DMA and MSI, exposed to userspace as /dev/drv_pci.
+
+comment "drv-pci needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL

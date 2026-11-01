@@ -70,3 +70,7 @@ qemu-log-*
 
 # debug information files
 *.dwo
+
+# Fetched and built dependencies (QEMU, Buildroot, outputs)
+/third_party/
+/share/

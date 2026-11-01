@@ -1,0 +1,22 @@
+diff --git a/hw/Kconfig b/hw/Kconfig
+index 2c00936..0baea41 100644
+--- a/hw/Kconfig
++++ b/hw/Kconfig
+@@ -1,5 +1,6 @@
+ # devices Kconfig
+ source 9pfs/Kconfig
++source custom/Kconfig
+ source acpi/Kconfig
+ source adc/Kconfig
+ source audio/Kconfig
+diff --git a/hw/meson.build b/hw/meson.build
+index 463d702..c04aa8d 100644
+--- a/hw/meson.build
++++ b/hw/meson.build
+@@ -68,3 +68,6 @@ subdir('sparc')
+ subdir('sparc64')
+ subdir('tricore')
+ subdir('xtensa')
++
++# Out-of-tree devices from custom-pci-qemu (symlink to qemu/devices)
++subdir('custom')
