@@ -257,6 +257,7 @@ static int custompci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
     /* Acitivate MSI Interrupts */
     ret = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_MSI);
     if (ret < 0) {
+        dev_err(&pdev->dev, "cannot allocate MSI vector: %d\n", ret);
         goto err_free_dma;
     }
     
@@ -265,6 +266,7 @@ static int custompci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
     /* Register IRQ handler */
     ret = request_irq(st->irq, custompci_irq_handler, 0, DRV_NAME, st);
     if (ret) {
+        dev_err(&pdev->dev, "cannot request IRQ %d: %d\n", st->irq, ret);
         goto err_free_irq_vectors;
     }
     
@@ -274,12 +276,16 @@ static int custompci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
     st->miscdev.fops = &miscpci_fops;
 
     ret = misc_register(&st->miscdev);
-    if (ret)
-        goto err_iounmap;
+    if (ret) {
+        dev_err(&pdev->dev, "cannot register misc device: %d\n", ret);
+        goto err_free_irq;
+    }
 
     pr_info(DRV_NAME ": PCI device probed, dma memory allocated, msi interrupts and miscdev registered\n");
     return 0;
 
+err_free_irq:
+    free_irq(st->irq, st);
 err_free_irq_vectors:
     pci_free_irq_vectors(pdev);
 err_free_dma:
