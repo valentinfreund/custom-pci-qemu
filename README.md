@@ -1,168 +1,106 @@
 # Custom PCI Device Emulation & Linux Driver
 
-This project demonstrates how to emulate a custom PCI device using QEMU and includes a corresponding Linux kernel driver to interact with the virtual hardware. Notice: My Host OS is Ubuntu 20.04.
+This project demonstrates how hardware and operating systems interact with each other:
+custom devices are emulated in QEMU and driven by Linux kernel drivers
+running in a small Buildroot guest system. Everything is built from source
+with pinned versions, so the whole setup is reproducible with a few commands.
 
-**Workflow:  Setup QEMU  ->  Add custom PCI Device  ->  Build QEMU  ->  Start QEMU  ->  Add, Make & Load Driver**
-
-## Table of Contents
-1. [Prerequisites](#1-prerequisites)
-2. [Create Custom PCI Device in QEMU](#2-create-custom-pci-device-in-qemu)
-3. [Create PCI Device Driver](#3-create-pci-device-driver)
-
----
-
-## 1. Prerequisites
-
-### System specification
-* QEMU: v9.0.0
-* Linux Kernel: Version 5.4
-
-### Install the dependencies
-
-```bash
-# Debian/Ubuntu systems
-sudo apt update
-sudo apt install \
-  qemu-system-x86 \
-  qemu-utils \
-  virt-manager \
-  libvirt-daemon-system \
-  libvirt-clients \
-  bridge-utils \
-  build-essential \
-  git
-sudo apt install libsdl2-dev libgtk-3-dev libepoxy-dev libgbm-dev
-sudo apt install libslirp-dev
+```mermaid
+flowchart LR
+    subgraph Host
+        subgraph QEMU["QEMU (patched, v9.0.0)"]
+            DEV["custom devices<br/>qemu/devices"]
+            subgraph Guest["Buildroot guest (Linux 6.18)"]
+                APP["userspace<br/>test programs"]
+                DRV["kernel drivers<br/>drivers/"]
+            end
+        end
+    end
+    APP -- "system calls" --> DRV
+    DRV -- "MMIO / bus accesses" --> DEV
+    DEV -- "DMA · interrupts" --> DRV
 ```
 
-Download an Ubuntu iso. i.e. **ubuntu-24.04.3-desktop-amd64.iso**
+## Projects
 
-## 2. Create Custom PCI Device in QEMU
+Each project is a QEMU device together with its Linux driver. The register
+map of a device is the contract between both sides and is documented with it.
 
-### Set up project
-Our project structure should look like this after the setup. 
+| Project | Device | Driver | Topics |
+|---------|--------|--------|--------|
+| [pci-dma](docs/pci-dma.md) | `custom-pci-device` | `drv_pci` | PCI, MMIO, DMA, MSI, misc device |
+
+## Repository layout
 
 ```text
-qemu-pci-dev/
-├── images/      # VM-Disks
-├── isos/        # Linux-ISOs
-├── build/       # QEMU-Builds
-├── logs/        # I do not use logs
-├── qemu/        # Cloning QEMU github will 
-|                # create this directory
-└── launchVM.sh  # launch script
+custom-pci-qemu/
+├── qemu/
+│   ├── devices/            # QEMU device models (+ meson.build, Kconfig)
+│   └── patches/            # one-time patch: hooks qemu/devices into QEMU as hw/custom
+├── drivers/
+│   └── pci-dma/            # Linux driver for custom-pci-device
+├── buildroot-external/     # Buildroot external tree: guest config + driver packages
+├── scripts/                # setup, build and run scripts
+├── docs/                   # one page per project (device + driver)
+└── third_party/            # (not in git) QEMU, Buildroot, build outputs
 ```
+
+QEMU and Buildroot are not part of this repository. The setup scripts clone
+pinned versions into `third_party/`, apply the patch and build them.
+
+## Quick start
+
+Tested on Ubuntu 20.04 (x86_64). Needs about 15 GB of disk space.
 
 ```bash
-mkdir -p ~/qemu-pci-dev/{images,isos,build,logs,filex}
-cd ~/qemu-pci-dev
+git clone https://github.com/valentinfreund/custom-pci-qemu.git
+cd custom-pci-qemu
+
+./scripts/install-deps.sh       # host packages (apt, needs sudo)
+./scripts/setup-qemu.sh         # clone, patch and build QEMU        (~10 min)
+./scripts/setup-buildroot.sh    # build toolchain, kernel, rootfs    (~30-60 min, first time only)
+./scripts/run.sh                # boot the guest in this terminal
 ```
 
-**Clone the QEMU github**
-```bash
-git clone https://gitlab.com/qemu-project/qemu.git
-cd qemu
-git checkout v9.0.0
-```
+Log in as `root` (no password). Each project page shows how to try its driver.
+Leave QEMU with `Ctrl-a x`.
 
-**Copy your ISO to /isos**
-```bash
-cp ~/path/to/iso/ubuntu-24.04.3-desktop-amd64.iso ~/qemu-pci-dev/isos/ubuntu-24.04.3-desktop-amd64.iso
-```
+## Development workflow
 
-**Create your image in /images**
-```bash
-cd ~/qemu-pci-dev/images
-qemu-img create -f qcow2 linux-pci-dev.qcow2 20G
-#allocates 20 GB
-```
+| Task | Command |
+|------|---------|
+| Rebuild QEMU after changing a device | `./scripts/build.sh qemu` |
+| Rebuild a driver and repack the guest image | `./scripts/build.sh drv-pci` |
+| Rebuild everything that changed | `./scripts/build.sh` |
+| Change the guest kernel configuration | `./scripts/build.sh linux-menuconfig` |
+| Boot the guest | `./scripts/run.sh` |
+| Share `./share` with the guest at `/mnt/host` | `./scripts/run.sh --share` |
+| Keep changes made inside the guest | `./scripts/run.sh --persist` |
+| Pass extra options to QEMU | `./scripts/run.sh -- -d guest_errors` |
 
-### Customize the PCI device
-Add the file containing the device to this location
-```bash
-cd ~/qemu-pci-dev/qemu/hw/misc
-```
-Manipulate the meson.build file in this directory 
-```bash
-vim meson.build
-```
-by adding this line
-```python3
-system_ss.add(when: 'CONFIG_PCI', if_true: files('custom-pci-device.c'))
-```
+By default the guest disk is used in snapshot mode: every boot starts from the
+freshly built image.
 
-### Build QEMU
-this might take a moment
-```bash
-cd ~/qemu-pci-dev/build
-../qemu/configure --target-list=x86_64-softmmu --enable-debug --enable-sdl --enable-gtk --enable-slirp 
-make -j$(nproc)
-```
+### Adding a new QEMU device
 
-**Notice:  before rebuilding delete everything in qemu-pci-dev/build/**
+1. Put the source file into `qemu/devices/`.
+2. Add a `config` entry to `qemu/devices/Kconfig` and a line to
+   `qemu/devices/meson.build`.
+3. Run `./scripts/build.sh qemu`.
 
-### Use a bash script to launch QEMU
-```bash
-chmod +x launch-vm.sh
-./launch-vm.sh
-```
+No changes to the QEMU tree are necessary: `qemu/devices/` is symlinked into
+QEMU as `hw/custom`.
 
-## 3. Create PCI Device Driver
+### Adding a new driver
 
-**Installation of required packages in VM**
-```bash
-sudo apt update
-sudo apt install \
-  build-essential \
-  linux-headers-$(uname -r) \
-  gdb \
-  make \
-  git
-```
+1. Put the driver into `drivers/<name>/` with a Kbuild `Makefile`.
+2. Create `buildroot-external/package/<name>/` with `Config.in` and `<name>.mk`
+   (copy `drv-pci` as a template) and source it from `buildroot-external/Config.in`.
+3. Enable it in `buildroot-external/configs/driverlab_x86_64_defconfig`.
 
-**Mount the fileshare**
-To share files between Host(files/) and the VM(filexhost)
-```bash
-mkdir filexhost
-cd filexhost
-sudo mount -t 9p -o trans=virtio,version=9p2000.L hostshare ~/filexhost
-```
+Document the new device and driver in `docs/<name>.md` and add a row to the
+[project table](#projects).
 
-**Check if PCI device can be found**
-```bash
-lspci -nn
-```
+## License
 
-### Make & Load the Kernel Module
-
-Currently, the driver displays a modest template.
-It probes and maps one BAR.
-
-drv_pci must be in the same directory as the Makefile when calling
-```bash
-make
-```
-
-Load the LKM
-```bash
-sudo insmod drv_pci.ko
-```
-Write to miscdev
-```bash
-sudo sh -c 'echo "Hallo DMA" > /dev/drv_pci' tail
-```
-
-Read from miscdev the contents of the dma transfer
-```bash
-sudo head -c 16 /dev/drv_pci | hexdump -C
-```
-
-Inspect the kernel messages
-```bash
-sudo dmesg | tail
-```
-
-Remove the kernel module
-```bash
-sudo rmmod drv_pci
-```
+GPL-2.0, see [LICENSE](LICENSE).
