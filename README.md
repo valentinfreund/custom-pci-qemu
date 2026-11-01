@@ -41,6 +41,7 @@ custom-pci-qemu/
 │   └── pci-dma/            # Linux driver for custom-pci-device
 ├── buildroot-external/     # Buildroot external tree: guest config + driver packages
 ├── scripts/                # setup, build and run scripts
+├── tests/guest/            # driver tests, run inside the guest by scripts/test.sh
 ├── docs/                   # one page per project (device + driver)
 └── third_party/            # (not in git) QEMU, Buildroot, build outputs
 ```
@@ -74,6 +75,7 @@ Leave QEMU with `Ctrl-a x`.
 | Rebuild everything that changed | `./scripts/build.sh` |
 | Change the guest kernel configuration | `./scripts/build.sh linux-menuconfig` |
 | Boot the guest | `./scripts/run.sh` |
+| Run the driver tests (boots the guest) | `./scripts/test.sh` |
 | Share `./share` with the guest at `/mnt/host` | `./scripts/run.sh --share` |
 | Keep changes made inside the guest | `./scripts/run.sh --persist` |
 | Pass extra options to QEMU | `./scripts/run.sh -- -d guest_errors` |
@@ -98,7 +100,7 @@ QEMU as `hw/custom`.
    (copy `drv-pci` as a template) and source it from `buildroot-external/Config.in`.
 3. Enable it in `buildroot-external/configs/driverlab_x86_64_defconfig`.
 
-Document the new device and driver in `docs/<name>.md` and add a row to the
+Add guest tests as `tests/guest/<name>.test`. Document the new device and driver in `docs/<name>.md` and add a row to the
 [project table](#projects).
 
 ## License

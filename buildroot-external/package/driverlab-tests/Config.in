@@ -1,0 +1,5 @@
+config BR2_PACKAGE_DRIVERLAB_TESTS
+	bool "driverlab-tests"
+	help
+	  Guest-side driver tests, run by scripts/test.sh on the host
+	  (or manually with "driverlab-test" in the guest).

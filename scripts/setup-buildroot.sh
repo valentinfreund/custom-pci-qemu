@@ -9,10 +9,7 @@ if [[ ! -d "${BUILDROOT_SRC}/.git" ]]; then
         "${BUILDROOT_GIT_URL}" "${BUILDROOT_SRC}"
 fi
 
-if [[ ! -f "${BR_OUT}/.config" ]]; then
-    log "Configuring Buildroot for ${ARCH}"
-    br_make "driverlab_${ARCH}_defconfig"
-fi
+br_sync_config
 
 log "Building guest system for ${ARCH} (first run takes a while)"
 br_make

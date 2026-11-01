@@ -8,6 +8,7 @@
 source "$(dirname "$0")/common.sh"
 
 [[ -f "${BR_OUT}/.config" ]] || die "Guest not configured. Run ./scripts/setup-buildroot.sh first."
+br_sync_config
 
 if [[ $# -eq 0 ]]; then
     br_make
