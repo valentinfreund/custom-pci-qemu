@@ -5,6 +5,7 @@
 #include <linux/miscdevice.h>
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
+#include <linux/idr.h>
 
 //device information
 #define DRV_NAME "drv_pci"
@@ -49,7 +50,12 @@ struct dev_state {
     
     struct completion dma_comp;
     struct miscdevice miscdev;
+    int id;                 //instance number: /dev/drv_pci<id>
+    char name[16];
 };
+
+//hands out the instance numbers for /dev/drv_pci<N>
+static DEFINE_IDA(drv_pci_ida);
 
 //##################################################
 // @name 	    custompci_irq_handler
@@ -272,18 +278,27 @@ static int custompci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
     
 	/* Setup misc device */
     st->miscdev.minor = MISC_DYNAMIC_MINOR;
-    st->miscdev.name = DRV_NAME;
+    st->id = ida_alloc(&drv_pci_ida, GFP_KERNEL);
+    if (st->id < 0) {
+        ret = st->id;
+        goto err_free_irq;
+    }
+    snprintf(st->name, sizeof(st->name), DRV_NAME "%d", st->id);
+    st->miscdev.name = st->name;
     st->miscdev.fops = &miscpci_fops;
+    st->miscdev.parent = &pdev->dev;
 
     ret = misc_register(&st->miscdev);
     if (ret) {
         dev_err(&pdev->dev, "cannot register misc device: %d\n", ret);
-        goto err_free_irq;
+        goto err_free_id;
     }
 
-    pr_info(DRV_NAME ": PCI device probed, dma memory allocated, msi interrupts and miscdev registered\n");
+    dev_info(&pdev->dev, "probed, DMA buffer, MSI and /dev/%s ready\n", st->name);
     return 0;
 
+err_free_id:
+    ida_free(&drv_pci_ida, st->id);
 err_free_irq:
     free_irq(st->irq, st);
 err_free_irq_vectors:
@@ -311,6 +326,7 @@ static void custompci_remove(struct pci_dev *pdev)
     struct dev_state *st = pci_get_drvdata(pdev);
 
     misc_deregister(&st->miscdev);
+    ida_free(&drv_pci_ida, st->id);
     
     free_irq(st->irq, st);
     pci_free_irq_vectors(pdev);
@@ -323,7 +339,7 @@ static void custompci_remove(struct pci_dev *pdev)
     pci_clear_master(pdev);
     pci_disable_device(pdev);
 
-    pr_info(DRV_NAME ": device removed\n");
+    dev_info(&pdev->dev, "removed /dev/%s\n", st->name);
 }
 
 //############################

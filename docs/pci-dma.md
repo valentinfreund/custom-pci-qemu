@@ -2,7 +2,7 @@
 
 A PCI device with an MMIO register block (BAR0), DMA into guest memory and
 MSI interrupts. Its Linux driver exposes the device to userspace as
-`/dev/drv_pci`.
+`/dev/drv_pci0`, `/dev/drv_pci1`, … (one node per device).
 
 | Part | Source |
 |------|--------|
@@ -16,7 +16,7 @@ flowchart LR
         DEV["custom-pci-device<br/>BAR0 registers · DMA engine · MSI"]
         subgraph Guest["Buildroot guest"]
             APP["userspace<br/>echo / head / test tools"]
-            DRV["drv_pci.ko<br/>misc device /dev/drv_pci"]
+            DRV["drv_pci.ko<br/>misc device /dev/drv_pciN"]
         end
     end
     APP -- "read() / write()" --> DRV
@@ -47,7 +47,8 @@ flowchart LR
 ## Driver
 
 The driver `drv_pci` maps BAR0, allocates a 4 KiB coherent DMA buffer and
-registers one MSI vector. It creates the misc device `/dev/drv_pci`:
+registers one MSI vector. For every device it creates a misc device
+`/dev/drv_pci<N>`:
 
 - `write()` copies the user data into the DMA buffer and lets the device read
   it (`DMA_CMD = 1`).
@@ -63,7 +64,7 @@ Boot the guest with `./scripts/run.sh`, log in as `root` and run:
 ```bash
 lspci -nn | grep 1234:5678                # the device is on the bus
 modprobe drv_pci                          # load the driver
-echo "Hello DMA" > /dev/drv_pci           # device reads the buffer via DMA
-head -c 16 /dev/drv_pci | hexdump -C      # device writes a pattern via DMA
+echo "Hello DMA" > /dev/drv_pci0          # device reads the buffer via DMA
+head -c 16 /dev/drv_pci0 | hexdump -C     # device writes a pattern via DMA
 dmesg | tail                              # probe, DMA and interrupt messages
 ```
