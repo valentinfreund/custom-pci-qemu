@@ -17,6 +17,9 @@
 #define REG_DMA_ADDR_HIGH 0x08
 #define REG_DMA_SIZE      0x0C
 #define REG_DMA_CMD       0x10
+#define REG_DEV_ADDR      0x14
+#define REG_STATUS        0x18
+#define STATUS_ERROR      (1u << 0)
 //dma information
 #define CMD_DMA_READ      0x01
 #define CMD_DMA_WRITE     0x02
@@ -74,7 +77,8 @@ static irqreturn_t custompci_irq_handler(int irq, void *dev_id)
 // @param		device state, command, buffer offset, length
 // @return		0 or error code
 // @function	programs one DMA transfer of the region
-//              [off, off + len) of the DMA buffer and
+//              [off, off + len) between the DMA buffer and
+//              the same region of the device memory and
 //              waits for the completion interrupt.
 //              Caller must hold st->lock.
 //-------------------------------------------------
@@ -88,6 +92,7 @@ static int run_dma(struct dev_state *st, u32 cmd, loff_t off, size_t len)
     iowrite32(lower_32_bits(addr), st->bar0 + REG_DMA_ADDR_LOW);
     iowrite32(upper_32_bits(addr), st->bar0 + REG_DMA_ADDR_HIGH);
     iowrite32((u32)len, st->bar0 + REG_DMA_SIZE);
+    iowrite32((u32)off, st->bar0 + REG_DEV_ADDR);
     iowrite32(cmd, st->bar0 + REG_DMA_CMD);
 
     ret = wait_for_completion_interruptible_timeout(&st->dma_comp,
@@ -98,6 +103,12 @@ static int run_dma(struct dev_state *st, u32 cmd, loff_t off, size_t len)
     }
     if (ret < 0)
         return ret;     //interrupted by a signal
+
+    if (ioread32(st->bar0 + REG_STATUS) & STATUS_ERROR) {
+        dev_err(&st->pdev->dev, "device rejected DMA (cmd %u, %zu bytes at offset %lld)\n",
+                cmd, len, off);
+        return -EIO;
+    }
 
     dev_dbg(&st->pdev->dev, "DMA done (cmd %u, %zu bytes at offset %lld)\n", cmd, len, off);
     return 0;

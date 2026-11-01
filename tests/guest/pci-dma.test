@@ -22,9 +22,15 @@ for dev in /dev/drv_pci[0-9]*; do
     dd if=/tmp/in of="$dev" bs=16 count=1 2>/dev/null
     dd if="$dev" of=/tmp/out bs=16 count=1 2>/dev/null
     check "pci-dma: $name loopback 16 bytes" cmp /tmp/in /tmp/out
+
+    # Chunked transfers: each write/read continues at the file position.
+    dd if=/dev/urandom of=/tmp/in bs=4096 count=1 2>/dev/null
+    dd if=/tmp/in of="$dev" bs=1024 count=4 2>/dev/null
+    dd if="$dev" of=/tmp/out bs=512 count=8 2>/dev/null
+    check "pci-dma: $name loopback in chunks" cmp /tmp/in /tmp/out
 done
 irqs_after=$(irq_count drv_pci)
-check "pci-dma: one MSI per DMA transfer" [ $((irqs_after - irqs_before)) -eq $((4 * NDEV)) ]
+check "pci-dma: one MSI per DMA transfer" [ $((irqs_after - irqs_before)) -eq $((16 * NDEV)) ]
 
 check     "pci-dma: rmmod drv_pci" rmmod drv_pci
 check     "pci-dma: /proc/interrupts readable after rmmod" cat /proc/interrupts
