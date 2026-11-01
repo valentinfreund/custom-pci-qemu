@@ -25,3 +25,13 @@ BR_OUT="${THIRD_PARTY}/out-${ARCH}"
 
 # Run make inside the Buildroot output directory of the selected ARCH
 br_make() { make -C "${BUILDROOT_SRC}" O="${BR_OUT}" BR2_EXTERNAL="${BR2_EXTERNAL_DIR}" "$@"; }
+
+# (Re)load our defconfig when it is newer than the active configuration.
+# Note: this replaces changes made with "menuconfig"; edit the defconfig instead.
+br_sync_config() {
+    local defconfig="${BR2_EXTERNAL_DIR}/configs/driverlab_${ARCH}_defconfig"
+    if [[ ! -f "${BR_OUT}/.config" || "${defconfig}" -nt "${BR_OUT}/.config" ]]; then
+        log "Loading $(basename "${defconfig}")"
+        br_make "$(basename "${defconfig}")"
+    fi
+}

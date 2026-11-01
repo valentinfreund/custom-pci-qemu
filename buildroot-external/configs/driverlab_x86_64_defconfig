@@ -28,3 +28,4 @@ BR2_PACKAGE_PCIUTILS=y
 
 # Our drivers and test programs
 BR2_PACKAGE_DRV_PCI=y
+BR2_PACKAGE_DRIVERLAB_TESTS=y

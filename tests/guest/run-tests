@@ -1,0 +1,12 @@
+#!/bin/sh
+# Run all driver tests in /usr/share/driverlab/tests (or the ones given as arguments)
+# and print a summary line that scripts/test.sh on the host looks for.
+TESTDIR=/usr/share/driverlab/tests
+. "$TESTDIR/lib.sh"
+
+[ $# -gt 0 ] || set -- "$TESTDIR"/*.test
+for t in "$@"; do
+    echo "=== $(basename "$t")"
+    . "$t"
+done
+echo "DRIVERLAB-RESULT: $PASSED passed, $FAILED failed"

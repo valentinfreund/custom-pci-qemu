@@ -1,0 +1,32 @@
+# Tests for drv_pci and custom-pci-device. scripts/test.sh starts QEMU with
+# two devices, so every check also covers multiple driver instances.
+NDEV=2
+
+expect_eq "pci-dma: $NDEV devices on the PCI bus" "$NDEV" "$(lspci -n | grep -c '1234:5678')"
+check     "pci-dma: modprobe drv_pci" modprobe drv_pci
+expect_eq "pci-dma: driver bound to all devices" "$NDEV" "$(ls /sys/bus/pci/drivers/drv_pci 2>/dev/null | grep -c '^0000:')"
+expect_eq "pci-dma: one /dev node per device" "$NDEV" "$(ls /dev | grep -c '^drv_pci[0-9]')"
+
+irqs_before=$(irq_count drv_pci)
+for dev in /dev/drv_pci[0-9]*; do
+    [ -c "$dev" ] || continue
+    name=$(basename "$dev")
+
+    # Loopback: data written to the device must come back unchanged.
+    dd if=/dev/urandom of=/tmp/in bs=4096 count=1 2>/dev/null
+    dd if=/tmp/in of="$dev" bs=4096 count=1 2>/dev/null
+    dd if="$dev" of=/tmp/out bs=4096 count=1 2>/dev/null
+    check "pci-dma: $name loopback 4096 bytes" cmp /tmp/in /tmp/out
+
+    dd if=/dev/urandom of=/tmp/in bs=16 count=1 2>/dev/null
+    dd if=/tmp/in of="$dev" bs=16 count=1 2>/dev/null
+    dd if="$dev" of=/tmp/out bs=16 count=1 2>/dev/null
+    check "pci-dma: $name loopback 16 bytes" cmp /tmp/in /tmp/out
+done
+irqs_after=$(irq_count drv_pci)
+check "pci-dma: one MSI per DMA transfer" [ $((irqs_after - irqs_before)) -eq $((4 * NDEV)) ]
+
+check     "pci-dma: rmmod drv_pci" rmmod drv_pci
+check     "pci-dma: /proc/interrupts readable after rmmod" cat /proc/interrupts
+expect_eq "pci-dma: no interrupt handlers left" "0" "$(grep -c drv_pci /proc/interrupts)"
+expect_eq "pci-dma: no kernel warnings or oopses" "" "$(kernel_errors | head -3)"
