@@ -9,7 +9,6 @@
 
 //device information
 #define DRV_NAME "drv_pci"
-#define BUF_SIZE 256
 #define VENDOR_ID 0x1234
 #define DEVICE_ID 0x5678
 //register address information
@@ -22,11 +21,12 @@
 #define CMD_DMA_READ      0x01
 #define CMD_DMA_WRITE     0x02
 #define DMA_BUF_SIZE      4096
+#define DMA_TIMEOUT_MS    1000
 
 
 //-------------------------------------------------
 //-------------------------------------------------
-MODULE_DESCRIPTION("PCI driver: init, probe, remove and exit should be shown in kernel msg");
+MODULE_DESCRIPTION("PCI driver for custom-pci-device: MMIO, DMA and MSI");
 MODULE_AUTHOR("Valentin Freundorfer");
 MODULE_LICENSE("GPL");
 //-------------------------------------------------
@@ -40,14 +40,12 @@ struct dev_state {
     struct pci_dev* pdev;
     void __iomem* bar0;
 
-    char buffer[BUF_SIZE];
-    size_t buffer_len;
-    
     void* dma_buf; 			//virtual address
     dma_addr_t dma_handle; 	//physical bus address
-    
+
     int irq;
-    
+
+    struct mutex lock;      //one DMA transfer at a time (shared buffer + completion)
     struct completion dma_comp;
     struct miscdevice miscdev;
     int id;                 //instance number: /dev/drv_pci<id>
@@ -59,68 +57,100 @@ static DEFINE_IDA(drv_pci_ida);
 
 //##################################################
 // @name 	    custompci_irq_handler
-// @function	function logs the occurence of interrupts
+// @function	signals the end of a DMA transfer
 //-------------------------------------------------
 static irqreturn_t custompci_irq_handler(int irq, void *dev_id)
 {
     struct dev_state *st = dev_id;
-    
-    pr_info(DRV_NAME ": received interrupt");
-    
+
+    dev_dbg(&st->pdev->dev, "interrupt\n");
     complete(&st->dma_comp);
-    
+
     return IRQ_HANDLED;
+}
+
+//##################################################
+// @name 	    run_dma
+// @param		device state, command, buffer offset, length
+// @return		0 or error code
+// @function	programs one DMA transfer of the region
+//              [off, off + len) of the DMA buffer and
+//              waits for the completion interrupt.
+//              Caller must hold st->lock.
+//-------------------------------------------------
+static int run_dma(struct dev_state *st, u32 cmd, loff_t off, size_t len)
+{
+    dma_addr_t addr = st->dma_handle + off;
+    long ret;
+
+    reinit_completion(&st->dma_comp);
+
+    iowrite32(lower_32_bits(addr), st->bar0 + REG_DMA_ADDR_LOW);
+    iowrite32(upper_32_bits(addr), st->bar0 + REG_DMA_ADDR_HIGH);
+    iowrite32((u32)len, st->bar0 + REG_DMA_SIZE);
+    iowrite32(cmd, st->bar0 + REG_DMA_CMD);
+
+    ret = wait_for_completion_interruptible_timeout(&st->dma_comp,
+                                                    msecs_to_jiffies(DMA_TIMEOUT_MS));
+    if (ret == 0) {
+        dev_err(&st->pdev->dev, "DMA timeout (cmd %u, %zu bytes)\n", cmd, len);
+        return -ETIMEDOUT;
+    }
+    if (ret < 0)
+        return ret;     //interrupted by a signal
+
+    dev_dbg(&st->pdev->dev, "DMA done (cmd %u, %zu bytes at offset %lld)\n", cmd, len, off);
+    return 0;
 }
 
 //##################################################
 // @name 	    miscpci_dma_read
 // @param		file, char, length, offset
 // @return		length of transferred data
-// @function	initiates dma transfer and reads data from  
-//              dma_buffer kernel space to user space
+// @function	lets the device write into the DMA buffer
+//              and copies the result to user space
 //-------------------------------------------------
 static ssize_t miscpci_dma_read(struct file *file, char __user *ubuf, size_t len, loff_t *off)
 {
     struct dev_state *st = container_of(file->private_data, struct dev_state, miscdev);
+    ssize_t ret;
 
     if (*off >= DMA_BUF_SIZE)
         return 0;
-        
+
     if (len > DMA_BUF_SIZE - *off)
         len = DMA_BUF_SIZE - *off;
 
-    reinit_completion(&st->dma_comp);
-
-    iowrite32(lower_32_bits(st->dma_handle), st->bar0 + REG_DMA_ADDR_LOW);
-    iowrite32(upper_32_bits(st->dma_handle), st->bar0 + REG_DMA_ADDR_HIGH);
-    iowrite32((uint32_t)len, st->bar0 + REG_DMA_SIZE);
-
-    pr_info(DRV_NAME ": Start DMA transfer\n");
-    iowrite32(CMD_DMA_WRITE, st->bar0 + REG_DMA_CMD);
-
-    if (wait_for_completion_interruptible(&st->dma_comp))
+    if (mutex_lock_interruptible(&st->lock))
         return -ERESTARTSYS;
 
-    if (copy_to_user(ubuf, st->dma_buf, len))
-        return -EFAULT;
+    ret = run_dma(st, CMD_DMA_WRITE, *off, len);
+    if (ret)
+        goto out;
 
-	*off += len;
+    if (copy_to_user(ubuf, st->dma_buf + *off, len)) {
+        ret = -EFAULT;
+        goto out;
+    }
 
-    pr_info(DRV_NAME ": DMA transfer completed\n");
-    return len; 
+    *off += len;
+    ret = len;
+out:
+    mutex_unlock(&st->lock);
+    return ret;
 }
 
 //##################################################
 // @name 	    miscpci_dma_write
 // @param		file, char, length, offset
 // @return		length of copied data
-// @function	reads data from user space to 
-//              kernel space into dma_buffer
-//				to start the dma transfer
+// @function	copies user data into the DMA buffer
+//              and lets the device read it
 //-------------------------------------------------
 static ssize_t miscpci_dma_write(struct file *file, const char __user *ubuf, size_t len, loff_t *off)
 {
     struct dev_state *st = container_of(file->private_data, struct dev_state, miscdev);
+    ssize_t ret;
 
     if (*off >= DMA_BUF_SIZE)
         return -ENOSPC;
@@ -128,70 +158,23 @@ static ssize_t miscpci_dma_write(struct file *file, const char __user *ubuf, siz
     if (len > DMA_BUF_SIZE - *off)
         len = DMA_BUF_SIZE - *off;
 
-    if (copy_from_user(st->dma_buf + *off, ubuf, len))
-        return -EFAULT;
-
-    reinit_completion(&st->dma_comp);
-
-    iowrite32(lower_32_bits(st->dma_handle), st->bar0 + REG_DMA_ADDR_LOW);
-    iowrite32(upper_32_bits(st->dma_handle), st->bar0 + REG_DMA_ADDR_HIGH);
-    iowrite32((uint32_t)len, st->bar0 + REG_DMA_SIZE);
-
-    pr_info(DRV_NAME ": Start DMA transfer\n");
-    iowrite32(CMD_DMA_READ, st->bar0 + REG_DMA_CMD);
-
-    if (wait_for_completion_interruptible(&st->dma_comp))
+    if (mutex_lock_interruptible(&st->lock))
         return -ERESTARTSYS;
-        
+
+    if (copy_from_user(st->dma_buf + *off, ubuf, len)) {
+        ret = -EFAULT;
+        goto out;
+    }
+
+    ret = run_dma(st, CMD_DMA_READ, *off, len);
+    if (ret)
+        goto out;
+
     *off += len;
-
-    pr_info(DRV_NAME ": DMA transfer completed!\n");
-    return len;
-}
-
-//##################################################
-// @name 	    miscpci_read
-// @param		file, char, length, offset
-// @return		length of transferred data
-// @function	reads data from kernel space to 
-//              user space
-//-------------------------------------------------
-static ssize_t miscpci_read(struct file *file, char __user *ubuf, size_t len, loff_t *off)
-{
-    struct dev_state *st = container_of(file->private_data, struct dev_state, miscdev);
-
-    if (*off >= st->buffer_len)
-        return 0; // EOF
-
-    if (len > st->buffer_len - *off)
-        len = st->buffer_len - *off;
-
-    if (copy_to_user(ubuf, st->buffer + *off, len))
-        return -EFAULT;
-
-    *off += len; //don't forget the offset
-    return len;
-}
-
-//##################################################
-// @name 	    miscpci_write
-// @param		file, char, length, offset
-// @return		length of copied data
-// @function	reads data from user space to 
-//              kernel space into buffer
-//-------------------------------------------------
-static ssize_t miscpci_write(struct file *file, const char __user *ubuf, size_t len, loff_t *off)
-{
-    struct dev_state *st = container_of(file->private_data, struct dev_state, miscdev);
-
-    if (len > BUF_SIZE)
-        return -EINVAL;
-
-    if (copy_from_user(st->buffer, ubuf, len))
-        return -EFAULT;
-
-    st->buffer_len = len;
-    return len;
+    ret = len;
+out:
+    mutex_unlock(&st->lock);
+    return ret;
 }
 
 //############################
@@ -234,7 +217,8 @@ static int custompci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
     pci_set_drvdata(pdev, st);
     st->pdev = pdev;
-	init_completion(&st->dma_comp);
+    mutex_init(&st->lock);
+    init_completion(&st->dma_comp);
 	
     /* Request and map BAR0 */
     ret = pci_request_region(pdev, 0, DRV_NAME);
