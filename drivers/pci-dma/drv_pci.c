@@ -41,6 +41,11 @@ struct dev_state {
     struct completion dma_comp;
     struct miscdevice miscdev;
     int id;                 //instance number: /dev/drv_pci<id>
+
+    //statistics, shown in sysfs
+    atomic64_t dma_transfers;
+    atomic64_t dma_bytes;
+    atomic64_t dma_errors;
     char name[16];
 };
 
@@ -88,6 +93,7 @@ static int run_dma(struct dev_state *st, u32 cmd, u32 buf_off, u32 dev_off, size
                                                     msecs_to_jiffies(DMA_TIMEOUT_MS));
     if (ret == 0) {
         dev_err(&st->pdev->dev, "DMA timeout (cmd %u, %zu bytes)\n", cmd, len);
+        atomic64_inc(&st->dma_errors);
         return -ETIMEDOUT;
     }
     if (ret < 0)
@@ -96,8 +102,12 @@ static int run_dma(struct dev_state *st, u32 cmd, u32 buf_off, u32 dev_off, size
     if (ioread32(st->bar0 + CUSTOM_PCI_REG_STATUS) & CUSTOM_PCI_STATUS_ERROR) {
         dev_err(&st->pdev->dev, "device rejected DMA (cmd %u, %zu bytes at device offset %u)\n",
                 cmd, len, dev_off);
+        atomic64_inc(&st->dma_errors);
         return -EIO;
     }
+
+    atomic64_inc(&st->dma_transfers);
+    atomic64_add(len, &st->dma_bytes);
 
     dev_dbg(&st->pdev->dev, "DMA done (cmd %u, %zu bytes, buffer offset %u, device offset %u)\n",
             cmd, len, buf_off, dev_off);
@@ -423,6 +433,63 @@ static void custompci_remove(struct pci_dev *pdev)
 }
 
 //############################
+// sysfs attributes			##
+//############################
+// Files in /sys/bus/pci/devices/<address>/ (also reachable as
+// /sys/class/misc/drv_pci<N>/device/), one value per file.
+
+static ssize_t instance_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct dev_state *st = dev_get_drvdata(dev);
+
+    return sysfs_emit(buf, "%d\n", st->id);
+}
+static DEVICE_ATTR_RO(instance);
+
+//live value of the STATUS register
+static ssize_t status_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct dev_state *st = dev_get_drvdata(dev);
+
+    return sysfs_emit(buf, "0x%08x\n", ioread32(st->bar0 + CUSTOM_PCI_REG_STATUS));
+}
+static DEVICE_ATTR_RO(status);
+
+static ssize_t dma_transfers_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct dev_state *st = dev_get_drvdata(dev);
+
+    return sysfs_emit(buf, "%lld\n", atomic64_read(&st->dma_transfers));
+}
+static DEVICE_ATTR_RO(dma_transfers);
+
+static ssize_t dma_bytes_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct dev_state *st = dev_get_drvdata(dev);
+
+    return sysfs_emit(buf, "%lld\n", atomic64_read(&st->dma_bytes));
+}
+static DEVICE_ATTR_RO(dma_bytes);
+
+static ssize_t dma_errors_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct dev_state *st = dev_get_drvdata(dev);
+
+    return sysfs_emit(buf, "%lld\n", atomic64_read(&st->dma_errors));
+}
+static DEVICE_ATTR_RO(dma_errors);
+
+static struct attribute *drv_pci_attrs[] = {
+    &dev_attr_instance.attr,
+    &dev_attr_status.attr,
+    &dev_attr_dma_transfers.attr,
+    &dev_attr_dma_bytes.attr,
+    &dev_attr_dma_errors.attr,
+    NULL,
+};
+ATTRIBUTE_GROUPS(drv_pci);     //defines drv_pci_groups
+
+//############################
 // pci device table			##
 //############################
 static const struct pci_device_id qemupci_ids[] = {
@@ -439,6 +506,8 @@ static struct pci_driver custompci_driver = {
     .id_table = qemupci_ids,
     .probe = custompci_probe,
     .remove = custompci_remove,
+    //created by the driver core after probe, removed before remove
+    .dev_groups = drv_pci_groups,
 };
 
 //##################################################
