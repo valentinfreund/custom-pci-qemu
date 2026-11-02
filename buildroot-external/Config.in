@@ -1,4 +1,5 @@
 menu "Driver lab packages"
 	source "$BR2_EXTERNAL_DRIVERLAB_PATH/package/drv-pci/Config.in"
+	source "$BR2_EXTERNAL_DRIVERLAB_PATH/package/pci-dma-tool/Config.in"
 	source "$BR2_EXTERNAL_DRIVERLAB_PATH/package/driverlab-tests/Config.in"
 endmenu

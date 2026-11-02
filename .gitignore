@@ -74,3 +74,4 @@ qemu-log-*
 # Fetched and built dependencies (QEMU, Buildroot, outputs)
 /third_party/
 /share/
+/userspace/pci-dma-tool/pci-dma-tool

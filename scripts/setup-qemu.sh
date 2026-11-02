@@ -24,15 +24,21 @@ done
 # hw/custom -> our device sources (edit in the repo, QEMU sees it directly)
 ln -sfn "${REPO_ROOT}/qemu/devices" "${QEMU_SRC}/hw/custom"
 
-if [[ ! -f "${QEMU_BUILD}/build.ninja" ]]; then
+# Shared headers (register maps) live in include/ of this repository.
+CONFIGURE_ARGS=(
+    --target-list="${QEMU_TARGETS}"
+    --enable-debug
+    --enable-slirp
+    --disable-docs
+    --extra-cflags="-I${REPO_ROOT}/include"
+)
+STAMP="${QEMU_BUILD}/.driverlab-configure-args"
+if [[ ! -f "${QEMU_BUILD}/build.ninja" || "$(cat "${STAMP}" 2>/dev/null)" != "${CONFIGURE_ARGS[*]}" ]]; then
     log "Configuring QEMU (targets: ${QEMU_TARGETS})"
     mkdir -p "${QEMU_BUILD}"
     cd "${QEMU_BUILD}"
-    "${QEMU_SRC}/configure" \
-        --target-list="${QEMU_TARGETS}" \
-        --enable-debug \
-        --enable-slirp \
-        --disable-docs
+    "${QEMU_SRC}/configure" "${CONFIGURE_ARGS[@]}"
+    echo "${CONFIGURE_ARGS[*]}" > "${STAMP}"
 fi
 
 log "Building QEMU"
