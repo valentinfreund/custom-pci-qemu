@@ -7,23 +7,11 @@
 #include <linux/dma-mapping.h>
 #include <linux/idr.h>
 
+#include <driverlab/custom-pci-regs.h>   /* register map shared with the QEMU device */
+
 //device information
 #define DRV_NAME "drv_pci"
-#define VENDOR_ID 0x1234
-#define DEVICE_ID 0x5678
-//register address information
-#define REG_IRQ_TRIGGER   0x00
-#define REG_DMA_ADDR_LOW  0x04
-#define REG_DMA_ADDR_HIGH 0x08
-#define REG_DMA_SIZE      0x0C
-#define REG_DMA_CMD       0x10
-#define REG_DEV_ADDR      0x14
-#define REG_STATUS        0x18
-#define STATUS_ERROR      (1u << 0)
-//dma information
-#define CMD_DMA_READ      0x01
-#define CMD_DMA_WRITE     0x02
-#define DMA_BUF_SIZE      4096
+#define DMA_BUF_SIZE      CUSTOM_PCI_MEM_SIZE
 #define DMA_TIMEOUT_MS    1000
 
 
@@ -89,11 +77,11 @@ static int run_dma(struct dev_state *st, u32 cmd, loff_t off, size_t len)
 
     reinit_completion(&st->dma_comp);
 
-    iowrite32(lower_32_bits(addr), st->bar0 + REG_DMA_ADDR_LOW);
-    iowrite32(upper_32_bits(addr), st->bar0 + REG_DMA_ADDR_HIGH);
-    iowrite32((u32)len, st->bar0 + REG_DMA_SIZE);
-    iowrite32((u32)off, st->bar0 + REG_DEV_ADDR);
-    iowrite32(cmd, st->bar0 + REG_DMA_CMD);
+    iowrite32(lower_32_bits(addr), st->bar0 + CUSTOM_PCI_REG_DMA_ADDR_LO);
+    iowrite32(upper_32_bits(addr), st->bar0 + CUSTOM_PCI_REG_DMA_ADDR_HI);
+    iowrite32((u32)len, st->bar0 + CUSTOM_PCI_REG_DMA_SIZE);
+    iowrite32((u32)off, st->bar0 + CUSTOM_PCI_REG_DEV_ADDR);
+    iowrite32(cmd, st->bar0 + CUSTOM_PCI_REG_DMA_CMD);
 
     ret = wait_for_completion_interruptible_timeout(&st->dma_comp,
                                                     msecs_to_jiffies(DMA_TIMEOUT_MS));
@@ -104,7 +92,7 @@ static int run_dma(struct dev_state *st, u32 cmd, loff_t off, size_t len)
     if (ret < 0)
         return ret;     //interrupted by a signal
 
-    if (ioread32(st->bar0 + REG_STATUS) & STATUS_ERROR) {
+    if (ioread32(st->bar0 + CUSTOM_PCI_REG_STATUS) & CUSTOM_PCI_STATUS_ERROR) {
         dev_err(&st->pdev->dev, "device rejected DMA (cmd %u, %zu bytes at offset %lld)\n",
                 cmd, len, off);
         return -EIO;
@@ -135,7 +123,7 @@ static ssize_t miscpci_dma_read(struct file *file, char __user *ubuf, size_t len
     if (mutex_lock_interruptible(&st->lock))
         return -ERESTARTSYS;
 
-    ret = run_dma(st, CMD_DMA_WRITE, *off, len);
+    ret = run_dma(st, CUSTOM_PCI_CMD_DMA_WRITE, *off, len);
     if (ret)
         goto out;
 
@@ -177,7 +165,7 @@ static ssize_t miscpci_dma_write(struct file *file, const char __user *ubuf, siz
         goto out;
     }
 
-    ret = run_dma(st, CMD_DMA_READ, *off, len);
+    ret = run_dma(st, CUSTOM_PCI_CMD_DMA_READ, *off, len);
     if (ret)
         goto out;
 
@@ -341,7 +329,7 @@ static void custompci_remove(struct pci_dev *pdev)
 // pci device table			##
 //############################
 static const struct pci_device_id qemupci_ids[] = {
-    { PCI_DEVICE(VENDOR_ID, DEVICE_ID) },
+    { PCI_DEVICE(CUSTOM_PCI_VENDOR_ID, CUSTOM_PCI_DEVICE_ID) },
     { 0 }
 };
 MODULE_DEVICE_TABLE(pci, qemupci_ids);

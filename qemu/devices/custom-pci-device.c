@@ -8,30 +8,10 @@
 #include "qapi/error.h"
 #include "sysemu/dma.h"
 
+#include "driverlab/custom-pci-regs.h"   /* register map shared with the driver */
+
 #define TYPE_CUSTOM_PCI_DEVICE "custom-pci-device"
 OBJECT_DECLARE_SIMPLE_TYPE(CustomPCIState, CUSTOM_PCI_DEVICE)
-
-//pci device information
-#define CUSTOM_PCI_VENDOR_ID    0x1234
-#define CUSTOM_PCI_DEVICE_ID    0x5678
-#define CUSTOM_PCI_REVISION     0x01
-#define BAR0_SIZE               4096
-//bar0 register map
-#define REG_IRQ_TRIGGER         0x00
-#define REG_DMA_ADDR_LOW        0x04
-#define REG_DMA_ADDR_HIGH       0x08
-#define REG_DMA_SIZE            0x0C
-#define REG_DMA_CMD             0x10
-#define REG_DEV_ADDR            0x14
-#define REG_STATUS              0x18
-//dma commands
-#define CMD_DMA_READ            0x01    //guest memory -> device memory
-#define CMD_DMA_WRITE           0x02    //device memory -> guest memory
-//status bits
-#define STATUS_ERROR            (1u << 0)   //last DMA command was rejected
-//internal device memory
-#define DEV_MEM_SIZE            4096
-
 
 //############################
 // state container			##
@@ -47,7 +27,7 @@ typedef struct CustomPCIState {
     uint32_t dev_addr;
     uint32_t status;
 
-    uint8_t mem[DEV_MEM_SIZE];
+    uint8_t mem[CUSTOM_PCI_MEM_SIZE];
 } CustomPCIState;
 
 //##################################################
@@ -79,18 +59,18 @@ static void do_custom_dma(CustomPCIState *d, uint32_t cmd)
 
     d->status = 0;
 
-    if (size == 0 || d->dev_addr >= DEV_MEM_SIZE || size > DEV_MEM_SIZE - d->dev_addr) {
+    if (size == 0 || d->dev_addr >= CUSTOM_PCI_MEM_SIZE || size > CUSTOM_PCI_MEM_SIZE - d->dev_addr) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "custom-pci-device: invalid DMA: %u bytes at device offset %u\n",
                       size, d->dev_addr);
-        d->status = STATUS_ERROR;
-    } else if (cmd == CMD_DMA_READ) {
+        d->status = CUSTOM_PCI_STATUS_ERROR;
+    } else if (cmd == CUSTOM_PCI_CMD_DMA_READ) {
         pci_dma_read(pci_dev, dma_addr, &d->mem[d->dev_addr], size);
-    } else if (cmd == CMD_DMA_WRITE) {
+    } else if (cmd == CUSTOM_PCI_CMD_DMA_WRITE) {
         pci_dma_write(pci_dev, dma_addr, &d->mem[d->dev_addr], size);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR, "custom-pci-device: unknown DMA command %u\n", cmd);
-        d->status = STATUS_ERROR;
+        d->status = CUSTOM_PCI_STATUS_ERROR;
     }
 
     custom_pci_raise_irq(d);
@@ -107,15 +87,15 @@ static uint64_t custom_pci_bar0_read(void *opaque, hwaddr addr, unsigned size)
     CustomPCIState *d = opaque;
 
     switch (addr) {
-    case REG_DMA_ADDR_LOW:
+    case CUSTOM_PCI_REG_DMA_ADDR_LO:
         return d->dma_addr_low;
-    case REG_DMA_ADDR_HIGH:
+    case CUSTOM_PCI_REG_DMA_ADDR_HI:
         return d->dma_addr_high;
-    case REG_DMA_SIZE:
+    case CUSTOM_PCI_REG_DMA_SIZE:
         return d->dma_size;
-    case REG_DEV_ADDR:
+    case CUSTOM_PCI_REG_DEV_ADDR:
         return d->dev_addr;
-    case REG_STATUS:
+    case CUSTOM_PCI_REG_STATUS:
         return d->status;
     default:
         return 0;
@@ -133,24 +113,24 @@ static void custom_pci_bar0_write(void *opaque, hwaddr addr, uint64_t val, unsig
     CustomPCIState *d = opaque;
 
     switch (addr) {
-    case REG_IRQ_TRIGGER:
+    case CUSTOM_PCI_REG_IRQ_TRIGGER:
         if (val == 1) {
             custom_pci_raise_irq(d);
         }
         break;
-    case REG_DMA_ADDR_LOW:
+    case CUSTOM_PCI_REG_DMA_ADDR_LO:
         d->dma_addr_low = (uint32_t)val;
         break;
-    case REG_DMA_ADDR_HIGH:
+    case CUSTOM_PCI_REG_DMA_ADDR_HI:
         d->dma_addr_high = (uint32_t)val;
         break;
-    case REG_DMA_SIZE:
+    case CUSTOM_PCI_REG_DMA_SIZE:
         d->dma_size = (uint32_t)val;
         break;
-    case REG_DMA_CMD:
+    case CUSTOM_PCI_REG_DMA_CMD:
         do_custom_dma(d, (uint32_t)val);
         break;
-    case REG_DEV_ADDR:
+    case CUSTOM_PCI_REG_DEV_ADDR:
         d->dev_addr = (uint32_t)val;
         break;
     default:
@@ -190,7 +170,7 @@ static void custom_pci_device_realize(PCIDevice *pci_dev, Error **errp)
     CustomPCIState *d = CUSTOM_PCI_DEVICE(pci_dev);
 
     /* Initialize BAR0 as memory-mapped I/O */
-    memory_region_init_io(&d->bar0, OBJECT(d), &custom_pci_bar0_ops, d, "custom-pci-bar0", BAR0_SIZE);
+    memory_region_init_io(&d->bar0, OBJECT(d), &custom_pci_bar0_ops, d, "custom-pci-bar0", CUSTOM_PCI_BAR0_SIZE);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->bar0);
 
     /* Initialize MSI (device, config space offset, #vectors, 64bit, per vector mask, error pointer) */

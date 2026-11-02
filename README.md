@@ -37,6 +37,7 @@ custom-pci-qemu/
 ├── qemu/
 │   ├── devices/            # QEMU device models (+ meson.build, Kconfig)
 │   └── patches/            # one-time patch: hooks qemu/devices into QEMU as hw/custom
+├── include/                # headers shared by devices, drivers and userspace (register maps, UAPI)
 ├── drivers/
 │   └── pci-dma/            # Linux driver for custom-pci-device
 ├── buildroot-external/     # Buildroot external tree: guest config + driver packages

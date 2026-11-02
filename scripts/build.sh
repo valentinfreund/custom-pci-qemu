@@ -17,7 +17,7 @@ fi
 
 for target in "$@"; do
     if [[ "${target}" == "qemu" ]]; then
-        make -C "${QEMU_BUILD}" -j"$(nproc)"
+        "${REPO_ROOT}/scripts/setup-qemu.sh"     # reconfigures if needed, then builds
     elif [[ -d "${BR2_EXTERNAL_DIR}/package/${target}" ]]; then
         # Always build our packages from scratch: they are small, and a plain
         # "-rebuild" misses changes in the kernel configuration.
