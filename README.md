@@ -28,7 +28,7 @@ map of a device is the contract between both sides and is documented with it.
 
 | Project | Device | Driver | Topics |
 |---------|--------|--------|--------|
-| [pci-dma](docs/pci-dma.md) | `custom-pci-device` | `drv_pci` | PCI, MMIO, DMA, MSI, misc device |
+| [pci-dma](docs/pci-dma.md) | `custom-pci-device` | `drv_pci` | PCI, MMIO, DMA, MSI, misc device, ioctl, mmap, sysfs |
 
 ## Repository layout
 
@@ -40,6 +40,7 @@ custom-pci-qemu/
 ├── include/                # headers shared by devices, drivers and userspace (register maps, UAPI)
 ├── drivers/
 │   └── pci-dma/            # Linux driver for custom-pci-device
+├── userspace/              # userspace programs for the drivers
 ├── buildroot-external/     # Buildroot external tree: guest config + driver packages
 ├── scripts/                # setup, build and run scripts
 ├── tests/guest/            # driver tests, run inside the guest by scripts/test.sh
