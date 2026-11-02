@@ -246,6 +246,30 @@ static long miscpci_ioctl(struct file *file, unsigned int cmd, unsigned long arg
     }
 }
 
+//##################################################
+// @name 	    miscpci_mmap
+// @param		file, virtual memory area of the process
+// @return		0 or error code
+// @function	maps the DMA buffer into the process (zero-copy).
+//              Userspace fills/reads it directly and starts
+//              transfers with DRV_PCI_IOC_DMA.
+//              Note: all processes that map a device share one
+//              buffer, and the mapping must not outlive the
+//              device (unbinding while mapped is not handled).
+//-------------------------------------------------
+static int miscpci_mmap(struct file *file, struct vm_area_struct *vma)
+{
+    struct dev_state *st = container_of(file->private_data, struct dev_state, miscdev);
+    unsigned long size = vma->vm_end - vma->vm_start;
+
+    //only the buffer itself, starting at its beginning
+    if (vma->vm_pgoff != 0 || size > PAGE_ALIGN(DMA_BUF_SIZE))
+        return -EINVAL;
+
+    //sets up the page tables with the cache attributes of the coherent buffer
+    return dma_mmap_coherent(&st->pdev->dev, vma, st->dma_buf, st->dma_handle, DMA_BUF_SIZE);
+}
+
 //############################
 // file operations    		##
 //############################
@@ -255,6 +279,7 @@ static const struct file_operations miscpci_fops = {
     .write = miscpci_dma_write,
     .unlocked_ioctl = miscpci_ioctl,
     .compat_ioctl   = compat_ptr_ioctl,     //32-bit programs: same struct layout
+    .mmap           = miscpci_mmap,
 };
 
 //##################################################
