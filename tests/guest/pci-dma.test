@@ -32,6 +32,29 @@ done
 irqs_after=$(irq_count drv_pci)
 check "pci-dma: one MSI per DMA transfer" [ $((irqs_after - irqs_before)) -eq $((16 * NDEV)) ]
 
+# ioctl + mmap (zero-copy) and sysfs, see include/uapi/linux/drv_pci.h
+for dev in /dev/drv_pci[0-9]*; do
+    [ -c "$dev" ] || continue
+    name=$(basename "$dev")
+    n=${name#drv_pci}
+    sys=/sys/class/misc/$name/device
+
+    check     "pci-dma: $name ioctl INFO" pci-dma-tool info "$dev"
+    expect_eq "pci-dma: $name INFO reports instance $n" "instance $n" "$(pci-dma-tool info "$dev" | grep instance)"
+    check     "pci-dma: $name mmap + ioctl loopback" pci-dma-tool loopback "$dev"
+    check     "pci-dma: $name invalid ioctl/mmap requests rejected" pci-dma-tool badargs "$dev"
+
+    expect_eq "pci-dma: $name sysfs instance" "$n" "$(cat $sys/instance 2>/dev/null)"
+    expect_eq "pci-dma: $name sysfs status" "0x00000000" "$(cat $sys/status 2>/dev/null)"
+    expect_eq "pci-dma: $name sysfs dma_errors" "0" "$(cat $sys/dma_errors 2>/dev/null)"
+    t0=$(cat $sys/dma_transfers 2>/dev/null); b0=$(cat $sys/dma_bytes 2>/dev/null)
+    dd if=/dev/zero of="$dev" bs=16 count=1 2>/dev/null
+    dd if="$dev" of=/dev/null bs=16 count=1 2>/dev/null
+    t1=$(cat $sys/dma_transfers 2>/dev/null); b1=$(cat $sys/dma_bytes 2>/dev/null)
+    check     "pci-dma: $name sysfs counts transfers and bytes" \
+              [ -n "$t0" ] && [ $((t1 - t0)) -eq 2 ] && [ $((b1 - b0)) -eq 32 ]
+done
+
 check     "pci-dma: rmmod drv_pci" rmmod drv_pci
 check     "pci-dma: /proc/interrupts readable after rmmod" cat /proc/interrupts
 expect_eq "pci-dma: no interrupt handlers left" "0" "$(grep -c drv_pci /proc/interrupts)"

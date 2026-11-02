@@ -4,7 +4,7 @@ obj-m += drv_pci.o
 # Buildroot copies this directory away from the repository and passes
 # DRIVERLAB_INCLUDE explicitly (see buildroot-external/package/drv-pci).
 DRIVERLAB_INCLUDE ?= $(src)/../../include
-ccflags-y += -I$(DRIVERLAB_INCLUDE)
+ccflags-y += -I$(DRIVERLAB_INCLUDE) -I$(DRIVERLAB_INCLUDE)/uapi
 
 # Builds against the running host kernel by default.
 # Buildroot passes its own kernel tree instead.

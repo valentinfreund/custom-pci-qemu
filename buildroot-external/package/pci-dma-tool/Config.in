@@ -1,0 +1,5 @@
+config BR2_PACKAGE_PCI_DMA_TOOL
+	bool "pci-dma-tool"
+	help
+	  Userspace tool for drv_pci: zero-copy loopback with mmap and
+	  ioctl, argument checks and a small benchmark.
